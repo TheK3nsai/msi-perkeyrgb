@@ -25,7 +25,7 @@ def set_hidapi_types(hidapi):
     hidapi.hid_read.restype = ct.c_int
     hidapi.hid_set_nonblocking.argtypes = [ct.c_void_p, ct.c_int]
     hidapi.hid_set_nonblocking.restype = ct.c_int
-    hidapi.hid_send_feature_report.argtypes = [ct.c_void_p, ct.c_char_p, ct.c_int]
+    hidapi.hid_send_feature_report.argtypes = [ct.c_void_p, ct.c_char_p, ct.c_size_t]
     hidapi.hid_send_feature_report.restype = ct.c_int
     hidapi.hid_get_feature_report.argtypes = [ct.c_void_p, ct.c_char_p, ct.c_size_t]
     hidapi.hid_get_feature_report.restype = ct.c_int
