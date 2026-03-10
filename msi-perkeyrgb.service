@@ -1,0 +1,10 @@
+[Unit]
+Description=MSI Per-Key RGB Keyboard Backlight
+
+[Service]
+Type=oneshot
+ExecStart=/home/kensai/Projects/msi-perkeyrgb/set-rgb.sh cba6f7
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
