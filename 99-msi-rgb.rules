@@ -1,1 +1,4 @@
+# Permissions for SteelSeries KLC hidraw devices
 KERNEL=="hidraw*", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1038", ATTRS{idProduct}=="113a", MODE="0666"
+# Start the RGB service when the USB device appears
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="1038", ATTR{idProduct}=="113a", TAG+="systemd", ENV{SYSTEMD_WANTS}="msi-perkeyrgb.service"

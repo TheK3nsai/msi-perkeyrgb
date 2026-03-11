@@ -95,6 +95,38 @@ msi-perkeyrgb --model <MSI model> -c <path to your configuration file>
 The configuration file allows you to set individual key configurations. It can have any extension. See the [dedicated wiki page](https://github.com/Askannz/msi-perkeyrgb/wiki/Configuration-file-guide) for its syntax and examples.
 
 
+GS76 Stealth (1038:113a) patches
+----------
+
+This fork includes the following fixes for the MSI GS76 Stealth 11UG (USB ID `1038:113a`):
+
+* **64-bit ctypes fix** : `hidapi_types.py` line 28 — changed `ct.c_int` to `ct.c_size_t` for `hid_send_feature_report` size parameter (truncation on 64-bit systems caused silent failures).
+* **Direct hidraw script** (`set-rgb-direct.py`) : Bypasses the HIDAPI ctypes wrapper entirely by sending HID feature reports via `ioctl(HIDIOCSFEATURE)` on `/dev/hidraw*`. This is more reliable than the ctypes approach, which intermittently fails and can crash the USB controller.
+* **Systemd service** (`msi-perkeyrgb.service`) : oneshot service with retry wrapper for boot persistence.
+* **udev integration** (`99-msi-rgb.rules`) : Sets hidraw permissions to `0666` and triggers the systemd service automatically when the SteelSeries KLC device appears.
+
+### Systemd setup
+
+```
+sudo cp 99-msi-rgb.rules /etc/udev/rules.d/
+sudo cp msi-perkeyrgb.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo udevadm control --reload-rules
+sudo systemctl enable msi-perkeyrgb.service
+```
+
+### Manual usage (direct script)
+
+```
+sudo python3 set-rgb-direct.py cba6f7
+```
+
+### Known issues
+
+* The SteelSeries KLC USB controller (`1038:113a`) is fragile — repeated HID failures crash the device off the USB bus. Only a reboot (power cycle) recovers it.
+* The `--model GS75` keymap is used for the GS76 (same keyboard layout).
+
+
 How does it work, and credits
 ----------
 

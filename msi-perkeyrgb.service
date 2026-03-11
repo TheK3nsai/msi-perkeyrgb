@@ -1,5 +1,6 @@
 [Unit]
 Description=MSI Per-Key RGB Keyboard Backlight
+# Started by udev when SteelSeries KLC appears (see 99-msi-rgb.rules)
 
 [Service]
 Type=oneshot
