@@ -45,7 +45,7 @@ def find_hidraw_device():
             continue
 
         # Match vendor:product
-        if f'{VENDOR_ID:04X}:{PRODUCT_ID:04X}' not in uevent.upper():
+        if f'{VENDOR_ID:08X}:{PRODUCT_ID:08X}' not in uevent.upper():
             continue
 
         # We want interface 0 (the HID control interface, not the keyboard input)
