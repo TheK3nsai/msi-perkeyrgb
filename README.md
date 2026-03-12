@@ -57,10 +57,11 @@ Requirements
   * **Archlinux** : `# pacman -S python-setuptools`
   * **Ubuntu** : `# apt install python3-setuptools`
   * **Fedora** : `# dnf install python3-setuptools`
-* libhidapi 0.8+
+* libhidapi 0.8+ (**libusb backend required** for `1038:113a` devices)
 	* **Archlinux** : `# pacman -S hidapi`
-	* **Ubuntu** : `# apt install libhidapi-hidraw0`
+	* **Ubuntu** : `# apt install libhidapi-libusb0`
 	* **Fedora** : `# dnf install hidapi`
+	* **Gentoo** : `# emerge dev-libs/hidapi`
 
 
 Permissions
@@ -100,8 +101,9 @@ GS76 Stealth (1038:113a) patches
 
 This fork includes the following fixes for the MSI GS76 Stealth 11UG (USB ID `1038:113a`):
 
+* **HIDAPI libusb backend** : Both the main `msi-perkeyrgb` command and the direct script now use `libhidapi-libusb` instead of `libhidapi-hidraw`. The hidraw ioctl path (`HIDIOCSFEATURE`) handles multi-packet USB control transfers poorly on full-speed devices — the SteelSeries KLC sends 524-byte feature reports that require ~9 USB packets, and the hidraw path intermittently returns `EPROTO` which cascades into crashing the USB device off the bus entirely.
 * **64-bit ctypes fix** : `hidapi_types.py` line 28 — changed `ct.c_int` to `ct.c_size_t` for `hid_send_feature_report` size parameter (truncation on 64-bit systems caused silent failures).
-* **Direct hidraw script** (`set-rgb-direct.py`) : Bypasses the HIDAPI ctypes wrapper entirely by sending HID feature reports via `ioctl(HIDIOCSFEATURE)` on `/dev/hidraw*`. This is more reliable than the ctypes approach, which intermittently fails and can crash the USB controller.
+* **Direct script** (`set-rgb-direct.py`) : Standalone RGB setter using HIDAPI libusb with per-packet retries (5 attempts, 1s retry delay) and 350ms inter-command delay to avoid overwhelming the USB controller.
 * **Systemd service** (`msi-perkeyrgb.service`) : oneshot service with retry wrapper for boot persistence.
 * **udev integration** (`99-msi-rgb.rules`) : Sets hidraw permissions to `0666` and triggers the systemd service automatically when the SteelSeries KLC device appears.
 
@@ -123,7 +125,7 @@ sudo python3 set-rgb-direct.py cba6f7
 
 ### Known issues
 
-* The SteelSeries KLC USB controller (`1038:113a`) is fragile — repeated HID failures crash the device off the USB bus. Only a reboot (power cycle) recovers it.
+* The SteelSeries KLC USB controller (`1038:113a`) is fragile — if too many HID transfers fail in rapid succession, the device crashes off the USB bus. Only a reboot recovers it. The libusb backend and retry logic mitigate this, but do not eliminate it entirely.
 * The `--model GS75` keymap is used for the GS76 (same keyboard layout).
 
 

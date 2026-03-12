@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
-"""Direct hidraw-based MSI per-key RGB setter.
+"""Direct MSI per-key RGB setter using HIDAPI libusb backend.
 
-Bypasses the HIDAPI ctypes wrapper and sends HID feature reports
-directly via ioctl on /dev/hidraw*, which is more reliable.
+Uses libhidapi-libusb (not hidraw) to send HID feature reports, which
+handles multi-packet USB control transfers more reliably on full-speed
+devices like the SteelSeries KLC.
 """
 
 import argparse
-import fcntl
-import glob
-import os
-import struct
+import ctypes as ct
+import re
 import sys
 import time
+from os import popen
+from os.path import exists
 
 # Import protocol/keymap data from msi_perkeyrgb
 sys.path.insert(0, '/usr/lib/python3.13/site-packages')
@@ -22,70 +23,47 @@ from msi_perkeyrgb.protocol_data.keycodes import REGION_KEYCODES
 
 VENDOR_ID = 0x1038
 PRODUCT_ID = 0x113a
-INTER_COMMAND_DELAY = 0.05  # 50ms between HID commands (vs 10ms in original)
+INTER_COMMAND_DELAY = 0.35   # 350ms between HID commands
+RETRY_DELAY = 1.0            # 1s wait before retrying a failed report
+MAX_RETRIES = 5              # per-packet retry count
 
 
-def _ioc(direction, type_char, nr, size):
-    """Compute ioctl number (Linux _IOC macro)."""
-    return (direction << 30) | (size << 16) | (ord(type_char) << 8) | nr
+def load_hidapi():
+    """Load the HIDAPI libusb backend."""
+    s = popen("ldconfig -p").read()
+    path_matches = re.findall(r"/.*libhidapi-libusb\.so(?:\.\d+)*", s)
+    if not path_matches:
+        print('Cannot locate libhidapi-libusb.so', file=sys.stderr)
+        sys.exit(1)
 
+    lib_path = path_matches[0]
+    if not exists(lib_path):
+        print(f'HIDAPI library not found at {lib_path}', file=sys.stderr)
+        sys.exit(1)
 
-def hidiocsfeature(length):
-    """HIDIOCSFEATURE(len) - send a feature report to a HID device."""
-    return _ioc(3, 'H', 0x06, length)  # 3 = _IOC_WRITE|_IOC_READ
+    hidapi = ct.cdll.LoadLibrary(lib_path)
 
+    # Set up function signatures
+    hidapi.hid_init.argtypes = []
+    hidapi.hid_init.restype = ct.c_int
+    hidapi.hid_open.argtypes = [ct.c_ushort, ct.c_ushort, ct.c_wchar_p]
+    hidapi.hid_open.restype = ct.c_void_p
+    hidapi.hid_send_feature_report.argtypes = [ct.c_void_p, ct.c_char_p, ct.c_size_t]
+    hidapi.hid_send_feature_report.restype = ct.c_int
+    hidapi.hid_write.argtypes = [ct.c_void_p, ct.c_char_p, ct.c_size_t]
+    hidapi.hid_write.restype = ct.c_int
+    hidapi.hid_close.argtypes = [ct.c_void_p]
+    hidapi.hid_close.restype = None
+    hidapi.hid_error.argtypes = [ct.c_void_p]
+    hidapi.hid_error.restype = ct.c_wchar_p
+    hidapi.hid_exit.argtypes = []
+    hidapi.hid_exit.restype = ct.c_int
 
-def find_hidraw_device():
-    """Find the hidraw device for the SteelSeries KLC keyboard (interface 0)."""
-    for path in sorted(glob.glob('/sys/class/hidraw/hidraw*/device/uevent')):
-        try:
-            with open(path) as f:
-                uevent = f.read()
-        except OSError:
-            continue
-
-        # Match vendor:product
-        if f'{VENDOR_ID:08X}:{PRODUCT_ID:08X}' not in uevent.upper():
-            continue
-
-        # We want interface 0 (the HID control interface, not the keyboard input)
-        # Check the parent device path for interface number
-        device_path = os.path.dirname(path)
-        hidraw_name = path.split('/')[4]  # e.g., hidraw1
-
-        # Read the interface number from the HID device path
-        # The path contains something like ...0003:1038:113A.0002 for interface 0
-        # and ...0003:1038:113A.0003 for interface 1
-        # Interface 0 has lower instance number
-        dev_path = f'/dev/{hidraw_name}'
-        print(f'Found SteelSeries KLC at {dev_path}')
-        return dev_path
-
-    return None
-
-
-def send_feature_report(fd, data):
-    """Send a HID feature report via ioctl."""
-    buf = bytearray(data)  # mutable buffer required for _IOWR ioctl
-    ioctl_num = hidiocsfeature(len(buf))
-    try:
-        ret = fcntl.ioctl(fd, ioctl_num, buf)
-    except OSError as e:
-        raise RuntimeError(f'Failed to send feature report ({len(buf)} bytes): {e}')
-    if ret < 0:
-        raise RuntimeError(f'Feature report ioctl returned {ret}')
-
-
-def send_output_report(fd, data):
-    """Send a HID output report via write()."""
-    buf = bytes(data)
-    written = os.write(fd, buf)
-    if written != len(buf):
-        raise RuntimeError(f'Output report: wrote {written}/{len(buf)} bytes')
+    return hidapi
 
 
 def set_steady_color(color_hex, model='GS75'):
-    """Set all keys to a steady color."""
+    """Set all keys to a steady color using HIDAPI libusb backend."""
     msi_keymap = MSI_Keyboard.get_model_keymap(model)
     if msi_keymap is None:
         print(f'Unknown model: {model}', file=sys.stderr)
@@ -108,43 +86,67 @@ def set_steady_color(color_hex, model='GS75'):
                     regions[region] = {}
                 regions[region][keycode] = color
 
-    # Find the hidraw device
-    dev_path = find_hidraw_device()
-    if dev_path is None:
-        print('SteelSeries KLC keyboard not found', file=sys.stderr)
-        return False
+    # Load HIDAPI libusb backend
+    hidapi = load_hidapi()
+    hidapi.hid_init()
 
     # Open the device
-    try:
-        fd = os.open(dev_path, os.O_RDWR)
-    except OSError as e:
-        print(f'Cannot open {dev_path}: {e}', file=sys.stderr)
+    device = hidapi.hid_open(VENDOR_ID, PRODUCT_ID, ct.c_wchar_p(0))
+    if device is None:
+        print('Cannot open SteelSeries KLC keyboard', file=sys.stderr)
+        hidapi.hid_exit()
         return False
 
+    print(f'Opened SteelSeries KLC via HIDAPI libusb')
+
+    success = True
     try:
         # Send color packets per region
         for region, region_colors in regions.items():
             packet = make_key_colors_packet(region, region_colors)
-            send_feature_report(fd, packet)
-            print(f'  Set {region} ({len(region_colors)} keys)')
+            data = bytes(packet)
+
+            sent = False
+            for attempt in range(MAX_RETRIES):
+                ret = hidapi.hid_send_feature_report(device, data, len(data))
+                if ret == len(data):
+                    print(f'  Set {region} ({len(region_colors)} keys)')
+                    sent = True
+                    break
+                else:
+                    err = hidapi.hid_error(device)
+                    err_msg = err if err else 'unknown error'
+                    print(f'  {region} attempt {attempt + 1}/{MAX_RETRIES} failed '
+                          f'(ret={ret}): {err_msg}')
+                    time.sleep(RETRY_DELAY)
+
+            if not sent:
+                print(f'  FAILED: {region} after {MAX_RETRIES} attempts', file=sys.stderr)
+                success = False
+                break
+
             time.sleep(INTER_COMMAND_DELAY)
 
-        # Send refresh
-        refresh = make_refresh_packet()
-        send_output_report(fd, refresh)
-        print('  Refresh sent')
+        if success:
+            # Send refresh as output report
+            refresh = bytes(make_refresh_packet())
+            ret = hidapi.hid_write(device, refresh, len(refresh))
+            if ret == len(refresh):
+                print('  Refresh sent')
+            else:
+                err = hidapi.hid_error(device)
+                print(f'  Refresh failed (ret={ret}): {err}', file=sys.stderr)
+                success = False
 
-    except RuntimeError as e:
-        print(f'Error: {e}', file=sys.stderr)
-        return False
     finally:
-        os.close(fd)
+        hidapi.hid_close(device)
+        hidapi.hid_exit()
 
-    return True
+    return success
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Set MSI keyboard RGB via direct hidraw access')
+    parser = argparse.ArgumentParser(description='Set MSI keyboard RGB via HIDAPI libusb')
     parser.add_argument('color', help='Hex color (e.g., cba6f7)')
     parser.add_argument('--model', default='GS75', help='MSI laptop model (default: GS75)')
     args = parser.parse_args()

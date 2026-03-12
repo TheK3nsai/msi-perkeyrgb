@@ -30,7 +30,7 @@ class HID_Keyboard:
 
         # Locating HIDAPI library
         s = popen("ldconfig -p").read()
-        path_matches = re.findall("/.*libhidapi-hidraw\\.so.+", s)
+        path_matches = re.findall("/.*libhidapi-libusb\\.so.+", s)
         if len(path_matches) == 0:
             raise HIDLibraryError("Cannot locate the hidapi library")
 
