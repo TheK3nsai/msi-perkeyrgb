@@ -1,0 +1,11 @@
+[Unit]
+Description=MSI SteelSeries KLC per-key RGB backlight
+Documentation=file:///home/kensai/Projects/msi-perkeyrgb/redesign/README.md
+# Triggered by udev (ENV{SYSTEMD_WANTS}) when the hidraw node appears.
+# Intentionally no [Install]/WantedBy — udev is the sole trigger. The script's
+# atomic /run claim dedups the multiple hidraw-interface triggers per boot.
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/msi-kbd-rgb.sh
+RemainAfterExit=no

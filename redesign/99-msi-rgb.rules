@@ -1,0 +1,15 @@
+# MSI GS76 Stealth — SteelSeries KLC per-key RGB keyboard (USB 1038:113a)
+
+# Permissions on the keyboard's hidraw nodes so the backlight tool can open them.
+KERNEL=="hidraw*", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1038", ATTRS{idProduct}=="113a", MODE="0666"
+
+# Apply the backlight when the *hidraw* node appears — i.e. once the device is
+# actually ready for feature reports. The old rule fired on raw USB `add`, which
+# is too early: the controller wasn't write-ready yet, the bounded retry
+# sometimes gave up, and the keyboard booted dark ("off again"). Triggering on
+# hidraw `add` + the script's settle wins that race.
+#
+# The keyboard exposes several hidraw interfaces, so this fires more than once
+# per boot; the service script's atomic /run claim makes all but the first a
+# no-op (and caps total HID writes — the brick guard).
+ACTION=="add", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1038", ATTRS{idProduct}=="113a", TAG+="systemd", ENV{SYSTEMD_WANTS}="msi-kbd-rgb.service"
