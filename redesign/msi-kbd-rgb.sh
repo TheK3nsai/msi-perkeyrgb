@@ -9,13 +9,19 @@
 # and activates the lights on its own (no unbind/rebind needed).
 #
 # HARD RULE (see ~/Projects/gentoo-config/GOTCHAS.md, "Repeated failed HID
-# writes crash the USB controller"): the controller wedges after repeated failed
-# feature-report writes and only a full power-off + AC-unplug recovers it. So:
-#   * the attempt ceiling is 3 and MUST NOT be raised;
-#   * an atomic per-boot claim caps total writes at 3 no matter how many udev
+# writes crash the USB controller"): the controller wedges after failed
+# feature-report writes and only the Battery Reset Hole EC reset recovers it.
+# ONE-STRIKE POLICY (2026-07-13): a single HIDSendError means the controller is
+# unhealthy — every hard wedge on record was preceded by fail→retry sequences,
+# and msi-perkeyrgb's exit code after a prior failure is untrustworthy (exit 0
+# with the lights still dark). So:
+#   * exactly ONE write attempt per boot — NO retry loop, DO NOT add one back;
+#   * an atomic per-boot claim keeps it at one write no matter how many udev
 #     triggers arrive (the keyboard exposes several hidraw interfaces);
-#   * on the first sign the controller is unhealthy we ABORT — never hammer;
+#   * the settle sleep, not retries, is what wins the enumeration race;
 #   * on failure we leave the keyboard DARK (safe, recoverable), never bricked.
+#     Manual recovery after a dark boot with a healthy controller:
+#       sudo rmdir /run/msi-kbd-rgb.claimed && sudo systemctl start msi-kbd-rgb
 set -u
 
 idVendor="1038"
@@ -23,8 +29,7 @@ idProduct="113a"
 model="GS75"                                # GS76 Stealth uses the GS75 keymap
 conf="/etc/msi-kbd-rgb.conf"
 claim="/run/msi-kbd-rgb.claimed"            # tmpfs: auto-clears each boot
-settle="${MSI_KBD_SETTLE:-3}"               # seconds for the controller to become write-ready
-maxAttempts=3                               # GOTCHAS ceiling — DO NOT RAISE
+settle="${MSI_KBD_SETTLE:-5}"               # seconds for the controller to become write-ready
 
 # Desired color: 6 hex digits from the conf file, else default lavender.
 color="cba6f7"
@@ -35,7 +40,7 @@ fi
 
 # Atomic single-claim per boot. mkdir is atomic, so exactly one invocation wins
 # even when the device's several hidraw interfaces fire the rule near-together.
-# This is also the brick guard: total HID writes per boot <= $maxAttempts.
+# This is also the brick guard: exactly one HID write per boot.
 mkdir "$claim" 2>/dev/null || exit 0
 
 # Locate the USB port (e.g. 3-12) for the keyboard.
@@ -56,28 +61,14 @@ fi
 # be enumerated but not yet ready for feature reports right after `add`.
 sleep "$settle"
 
-healthy() {
-    [ -d "/sys/bus/usb/devices/$port" ] &&
-    [ "$(cat "/sys/bus/usb/devices/$port/idProduct" 2>/dev/null)" = "$idProduct" ]
-}
-
-ok=0
-for attempt in $(seq 1 "$maxAttempts"); do
-    if /usr/bin/msi-perkeyrgb --model "$model" --id "${idVendor}:${idProduct}" -s "$color"; then
-        ok=1
-        break
-    fi
-    # Bail the instant the controller looks unhealthy — never hammer a wedged one.
-    if ! healthy; then
-        echo "msi-kbd-rgb: controller unhealthy after attempt $attempt; aborting (brick guard)" >&2
-        break
-    fi
-    sleep 1
-done
-
-if [ "$ok" = 0 ]; then
-    echo "msi-kbd-rgb: HID write failed; leaving keyboard dark (safe, recoverable)" >&2
+# One strike. A HIDSendError here means the controller is unhealthy — retrying
+# risks the hard wedge (Battery Reset Hole recovery), and a post-failure exit 0
+# from msi-perkeyrgb has been observed with the lights still dark, so a retry
+# can't even be trusted when it claims success.
+if ! /usr/bin/msi-perkeyrgb --model "$model" --id "${idVendor}:${idProduct}" -s "$color"; then
+    echo "msi-kbd-rgb: HID write failed; leaving keyboard dark — controller suspect (one-strike brick guard)" >&2
+    echo "msi-kbd-rgb: if lights stay dark after an EC reset + reboot, see GOTCHAS 'Repeated failed HID writes'" >&2
     exit 1
 fi
 
-echo "msi-kbd-rgb: set #$color via msi-perkeyrgb ($attempt attempt(s))"
+echo "msi-kbd-rgb: set #$color via msi-perkeyrgb (single attempt)"

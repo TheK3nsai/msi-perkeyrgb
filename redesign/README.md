@@ -1,8 +1,12 @@
 # MSI GS76 keyboard backlight — consolidated, brick-safe redesign
 
-**Status:** INSTALLED 2026-07-12 — live on stealth, old units retired, files
-mirrored into `~/Projects/gentoo-config`. Manual-start validation passed;
-suspend/resume + clean-reboot checks tracked in gentoo-config `TODO.md`.
+**Status:** INSTALLED 2026-07-12; **revised to ONE-STRIKE 2026-07-13** — the
+first reboot check failed (controller was already half-wedged; it hard-wedged
+under the bounded 3-attempt retry). The script now makes exactly one write per
+boot with a 5s settle and aborts dark on any `HIDSendError`. Full incident
+analysis + policy rationale: gentoo-config `GOTCHAS.md` ("Repeated failed HID
+writes"). **Canonical copies live in `~/Projects/gentoo-config`** — this dir
+is staging/reference; sync from gentoo-config, not the other way.
 
 ## Why
 
@@ -32,12 +36,15 @@ Two root problems:
   (main.py:133-134), so it activates the lights itself — no custom libusb script,
   no unbind/rebind.
 - **Race fix** — trigger on **hidraw `add`** (node present = device ready) + a
-  3s settle, instead of raw USB `add`.
-- **Brick-proof retry** — attempt ceiling stays at the GOTCHAS-sanctioned **3**,
-  plus: an **atomic per-boot claim** (`mkdir /run/msi-kbd-rgb.claimed`) caps
-  *total* writes per boot at 3 regardless of how many hidraw interfaces fire,
-  and the loop **aborts** the instant the controller looks unhealthy. On failure
-  it leaves the keyboard **dark (recoverable)**, never bricked.
+  5s settle, instead of raw USB `add`. The settle, not retries, wins the race.
+- **One-strike brick guard** (2026-07-13, supersedes the original 3-attempt
+  retry) — exactly **one** write per boot: an **atomic per-boot claim**
+  (`mkdir /run/msi-kbd-rgb.claimed`) dedupes the multiple hidraw-interface udev
+  triggers, and any `HIDSendError` aborts immediately. Rationale: every hard
+  wedge on record was preceded by fail→retry sequences, and `msi-perkeyrgb`
+  exit 0 after a prior failure was observed with the lights still dark (EC
+  ACKs without applying). On failure it leaves the keyboard **dark
+  (recoverable)**, never bricked.
 - **Color in one place** — `/etc/msi-kbd-rgb.conf` (default `cba6f7`).
 
 ## Files
@@ -79,7 +86,10 @@ sudo udevadm control --reload
    sudo systemctl start msi-kbd-rgb.service
    journalctl -u msi-kbd-rgb.service -n 20 --no-pager
    ```
-   Expect: `set #cba6f7 via msi-perkeyrgb (1 attempt(s))` and the keyboard lights.
+   Expect: `set #cba6f7 via msi-perkeyrgb (single attempt)` and the keyboard
+   lights. If it throws `HIDSendError` instead, STOP — do not re-run; the
+   controller is unhealthy (EC reset via the Battery Reset Hole, see
+   gentoo-config GOTCHAS).
 2. Suspend/resume — confirm it re-applies.
 3. Real test: reboot. Keyboard should come up lit without intervention.
 
