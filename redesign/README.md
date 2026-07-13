@@ -1,8 +1,8 @@
 # MSI GS76 keyboard backlight — consolidated, brick-safe redesign
 
-**Status:** DRAFT — staged, not installed. Do not install or test until the RGB
-controller has been recovered with a full power-off + AC-unplug (see GOTCHAS.md
-"Repeated failed HID writes crash the USB controller").
+**Status:** INSTALLED 2026-07-12 — live on stealth, old units retired, files
+mirrored into `~/Projects/gentoo-config`. Manual-start validation passed;
+suspend/resume + clean-reboot checks tracked in gentoo-config `TODO.md`.
 
 ## Why
 
