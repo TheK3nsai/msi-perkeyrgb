@@ -38,6 +38,9 @@ class MSI_Keyboard:
         self._msi_keymap = msi_keymap
         self._msi_presets = msi_presets
 
+    def close(self):
+        self._hid_keyboard.close()
+
     def set_color_all(self, color):
 
         for region in REGION_KEYCODES.keys():

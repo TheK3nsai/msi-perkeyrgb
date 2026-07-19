@@ -55,7 +55,18 @@ class HID_Keyboard:
         self._device = self._hidapi.hid_open(vid, pid, ct.c_wchar_p(0))
 
         if self._device is None:
+            self._hidapi.hid_exit()
             raise HIDOpenError
+
+    def close(self):
+        """Release the HID interface and let hidapi reattach its kernel driver."""
+        if self._device is None:
+            return
+
+        device = self._device
+        self._device = None
+        self._hidapi.hid_close(device)
+        self._hidapi.hid_exit()
 
     def send_feature_report(self, data):
         ret = self._hidapi.hid_send_feature_report(self._device, bytes(data), len(data))

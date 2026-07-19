@@ -46,6 +46,9 @@ Two root problems:
   ACKs without applying). On failure it leaves the keyboard **dark
   (recoverable)**, never bricked.
 - **Color in one place** — `/etc/msi-kbd-rgb.conf` (default `cba6f7`).
+- **Deterministic HID cleanup** (2026-07-19) — the client explicitly closes its
+  libusb HID handle on success and failure, so interface 0 is reattached instead
+  of remaining detached after the process exits.
 
 ## Files
 

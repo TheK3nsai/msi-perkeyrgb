@@ -93,49 +93,52 @@ def main():
                 print("Cannot open keyboard. Possible causes :\n- You don't have permissions to open the HID device. Run this program as root, or give yourself read/write permissions to the corresponding /dev/hidraw*. If you have just installed this tool, reboot your computer for the udev rule to take effect.\n- The USB device is not a HID device.")
                 sys.exit(1)
 
-            # If user has requested disabling
-            if args.disable:
-                kb.set_color_all([0, 0, 0])
-                kb.refresh()
+            try:
+                # If user has requested disabling
+                if args.disable:
+                    kb.set_color_all([0, 0, 0])
+                    kb.refresh()
 
-            # If user has requested a preset
-            elif args.preset:
-                try:
-                    preset = parse_preset(args.preset, msi_presets)
-                except UnknownPresetError:
-                    print("Preset %s not found for model %s. Use --list-presets for available options" % (args.preset, msi_model))
-                    sys.exit(1)
+                # If user has requested a preset
+                elif args.preset:
+                    try:
+                        preset = parse_preset(args.preset, msi_presets)
+                    except UnknownPresetError:
+                        print("Preset %s not found for model %s. Use --list-presets for available options" % (args.preset, msi_model))
+                        sys.exit(1)
 
-                kb.set_preset(preset)
-                kb.refresh()
+                    kb.set_preset(preset)
+                    kb.refresh()
 
-            # If user has requested to load a config file
-            elif args.config:
-                try:
-                    colors_map, warnings = load_config(args.config, msi_keymap)
-                except ConfigError as e:
-                    print("Error reading config file : %s" % str(e))
-                    sys.exit(1)
+                # If user has requested to load a config file
+                elif args.config:
+                    try:
+                        colors_map, warnings = load_config(args.config, msi_keymap)
+                    except ConfigError as e:
+                        print("Error reading config file : %s" % str(e))
+                        sys.exit(1)
 
-                for w in warnings:
-                    print("Warning :", w)
+                    for w in warnings:
+                        print("Warning :", w)
 
-                kb.set_colors(colors_map)
-                kb.refresh()
+                    kb.set_colors(colors_map)
+                    kb.refresh()
 
-            # If user has requested to display a steady color
-            elif args.steady:
-                try:
-                    colors_map, warnings = load_steady(args.steady, msi_keymap)
-                except ConfigError as e:
-                    print("Error preparing steady color : %s" % str(e))
-                    sys.exit(1)
-                kb.set_colors(colors_map)
-                kb.refresh()
+                # If user has requested to display a steady color
+                elif args.steady:
+                    try:
+                        colors_map, warnings = load_steady(args.steady, msi_keymap)
+                    except ConfigError as e:
+                        print("Error preparing steady color : %s" % str(e))
+                        sys.exit(1)
+                    kb.set_colors(colors_map)
+                    kb.refresh()
 
-            # If user has not requested anything
-            else:
-                print("Nothing to do ! Please specify a preset, steady, or a config file.")
+                # If user has not requested anything
+                else:
+                    print("Nothing to do ! Please specify a preset, steady, or a config file.")
+            finally:
+                kb.close()
 
 
 if __name__ == '__main__':
