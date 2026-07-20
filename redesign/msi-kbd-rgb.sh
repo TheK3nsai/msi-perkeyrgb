@@ -15,11 +15,14 @@
 # unhealthy — every hard wedge on record was preceded by fail→retry sequences,
 # and msi-perkeyrgb's exit code after a prior failure is untrustworthy (exit 0
 # with the lights still dark). So:
-#   * exactly ONE write attempt per boot — NO retry loop, DO NOT add one back;
-#   * an atomic per-boot claim keeps it at one write no matter how many udev
+#   * exactly ONE programming attempt per boot — NO retry loop, DO NOT add one back;
+#     that one msi-perkeyrgb transaction contains several ordered HID transfers;
+#   * an atomic per-boot claim keeps it at one attempt no matter how many udev
 #     triggers arrive (the keyboard exposes several hidraw interfaces);
 #   * the settle sleep, not retries, is what wins the enumeration race;
 #   * on failure we leave the keyboard DARK (safe, recoverable), never bricked.
+#     Exit 75 marks this guarded hardware outcome; the systemd unit accepts only
+#     that code so optional lighting cannot make the whole host degraded.
 #     Manual recovery after a dark boot with a healthy controller:
 #       sudo rmdir /run/msi-kbd-rgb.claimed && sudo systemctl start msi-kbd-rgb
 set -u
@@ -68,7 +71,7 @@ sleep "$settle"
 if ! /usr/bin/msi-perkeyrgb --model "$model" --id "${idVendor}:${idProduct}" -s "$color"; then
     echo "msi-kbd-rgb: HID write failed; leaving keyboard dark — controller suspect (one-strike brick guard)" >&2
     echo "msi-kbd-rgb: if lights stay dark after an EC reset + reboot, see GOTCHAS 'Repeated failed HID writes'" >&2
-    exit 1
+    exit 75
 fi
 
-echo "msi-kbd-rgb: set #$color via msi-perkeyrgb (single attempt)"
+echo "msi-kbd-rgb: set #$color via msi-perkeyrgb (single programming attempt)"

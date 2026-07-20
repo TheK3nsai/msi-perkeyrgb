@@ -2,8 +2,10 @@
 
 **Status:** INSTALLED 2026-07-12; **revised to ONE-STRIKE 2026-07-13** — the
 first reboot check failed (controller was already half-wedged; it hard-wedged
-under the bounded 3-attempt retry). The script now makes exactly one write per
-boot with a 5s settle and aborts dark on any `HIDSendError`. Full incident
+under the bounded 3-attempt retry). The script now makes exactly one programming
+attempt per boot with a 5s settle and aborts dark on any `HIDSendError`. One
+attempt contains several ordered feature reports plus the final refresh; it is
+the transaction that is never retried. Full incident
 analysis + policy rationale: gentoo-config `GOTCHAS.md` ("Repeated failed HID
 writes"). **Canonical copies live in `~/Projects/gentoo-config`** — this dir
 is staging/reference; sync from gentoo-config, not the other way.
@@ -38,7 +40,7 @@ Two root problems:
 - **Race fix** — trigger on **hidraw `add`** (node present = device ready) + a
   5s settle, instead of raw USB `add`. The settle, not retries, wins the race.
 - **One-strike brick guard** (2026-07-13, supersedes the original 3-attempt
-  retry) — exactly **one** write per boot: an **atomic per-boot claim**
+  retry) — exactly **one programming attempt** per boot: an **atomic per-boot claim**
   (`mkdir /run/msi-kbd-rgb.claimed`) dedupes the multiple hidraw-interface udev
   triggers, and any `HIDSendError` aborts immediately. Rationale: every hard
   wedge on record was preceded by fail→retry sequences, and `msi-perkeyrgb`
@@ -83,13 +85,13 @@ sudo udevadm control --reload
 
 ## Validate
 
-1. One manual run (single write, safe):
+1. One manual programming attempt (no retry):
    ```bash
    sudo rm -rf /run/msi-kbd-rgb.claimed
    sudo systemctl start msi-kbd-rgb.service
    journalctl -u msi-kbd-rgb.service -n 20 --no-pager
    ```
-   Expect: `set #cba6f7 via msi-perkeyrgb (single attempt)` and the keyboard
+   Expect: `set #cba6f7 via msi-perkeyrgb (single programming attempt)` and the keyboard
    lights. If it throws `HIDSendError` instead, STOP — do not re-run; the
    controller is unhealthy (EC reset via the Battery Reset Hole, see
    gentoo-config GOTCHAS).
