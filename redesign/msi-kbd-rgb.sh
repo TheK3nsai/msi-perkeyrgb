@@ -43,7 +43,7 @@ fi
 
 # Atomic single-claim per boot. mkdir is atomic, so exactly one invocation wins
 # even when the device's several hidraw interfaces fire the rule near-together.
-# This is also the brick guard: exactly one HID write per boot.
+# This is also the brick guard: exactly one programming transaction per boot.
 mkdir "$claim" 2>/dev/null || exit 0
 
 # Locate the USB port (e.g. 3-12) for the keyboard.
